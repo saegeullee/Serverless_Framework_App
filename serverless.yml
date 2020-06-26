@@ -17,11 +17,39 @@ provider:
     minimumCompressionSize: 1024 # Enable gzip compression for responses > 1 KB
   environment:
     AWS_NODEJS_CONNECTION_REUSE_ENABLED: 1
+    GROUPS_TABLE: Groups-${self:provider.stage}
+
+  # 사용자가 명령어를 실행할 때 전달한 stage 라는 옵션이 있다면
+  # 이를 사용하고 없다면 dev 를 사용한다.
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - dynamodb:Scan
+      Resource: arn:aws:dynamodb:${self:provider.region}:*:table/${self:provider.environment.GROUPS_TABLE}
 
 functions:
-  hello:
-    handler: handler.hello
+  GetGroups:
+    handler: src/lambda/http/getGroups.handler
+    #connect function to event source
     events:
       - http:
           method: get
-          path: hello
+          path: groups
+          cors: true
+
+resources:
+  Resources:
+    GroupsDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.GROUPS_TABLE}
