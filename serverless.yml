@@ -48,9 +48,27 @@ functions:
           method: post
           path: groups
           cors: true
+          reqValidatorName: RequestBodyValidator
+          request:
+            schema:
+              application/json: ${file(models/create-groups-request.json)}
+          documentation:
+            summary: Create a new group
+            description: Create a new group
 
 resources:
   Resources:
+    # API 게이트웨이에서 요청 검증을 하기 위한 요청 body 검증 리소스 추가
+    RequestBodyValidator:
+      Type: AWS::ApiGateway::RequestValidator
+      Properties:
+        Name: 'request-body-validator'
+        RestApiId:
+          Ref: ApiGatewayRestApi
+        #요청 body만 검증하고 파라미터는 검증하지 않는다.
+        ValidateRequestBody: true
+        ValidateRequestParameters: false
+
     GroupsDynamoDBTable:
       Type: 'AWS::DynamoDB::Table'
       Properties:
