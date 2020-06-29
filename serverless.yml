@@ -20,6 +20,7 @@ provider:
     GROUPS_TABLE: Groups-${self:provider.stage}
     IMAGES_TABLE: Images-${self:provider.stage}
     IMAGE_ID_INDEX: ImageIdIndex
+    IMAGES_S3_BUCKET: serverless-udagram-${self:provider.stage}
 
   # 사용자가 명령어를 실행할 때 전달한 stage 라는 옵션이 있다면
   # 이를 사용하고 없다면 dev 를 사용한다.
@@ -152,3 +153,39 @@ resources:
               ProjectionType: ALL
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:provider.environment.IMAGES_TABLE}
+
+    # 어플리케이션에 S3 버켓으로 요청을 보냈을 때 S3 버켓이
+    # cors 헤더를 알맞게 추가할 수 있도록 관련 설정들 추가
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
+        CorsConfiguration:
+          CorsRules:
+            - AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+
+    # 모든 사용자가 이 버켓에서 이미지를 읽을 수 있도록 정책 추가
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: '2012-10-17'
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*'
+        # 어떤 S3 버켓에 이 정책을 추가할지 지정
+        Bucket: !Ref AttachmentsBucket
