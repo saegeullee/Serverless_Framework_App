@@ -111,6 +111,9 @@ functions:
             summary: Create a new image
             description: Create a new image
 
+  SendUploadNotifications:
+    handler: src/lambda/s3/sendNotifications.handler
+
 resources:
   Resources:
     # API 게이트웨이에서 요청 검증을 하기 위한 요청 body 검증 리소스 추가
@@ -169,6 +172,14 @@ resources:
       Type: AWS::S3::Bucket
       Properties:
         BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
+        # S3 버켓으로 부터 발생한 이벤트를 람다함수와 연결하기 위한 설정
+        NotificationConfiguration:
+          LambdaConfigurations:
+            - Event: s3:ObjectCreated:*
+              #이벤트 발생시 호출할 람다함수
+              #CloudFormation의 GetAttribute 함수를 사용하여
+              #SendUploadNotificationsLambdaFunction 함수로부터 Arn을 얻어온다. ?
+              Function: !GetAtt SendUploadNotificationsLambdaFunction.Arn
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
@@ -182,6 +193,19 @@ resources:
                 - DELETE
                 - HEAD
               MaxAge: 3000
+
+    # 람다함수를 호출할 수 있는 람다권한 추가
+    SendUploadNotificationsPermission:
+      Type: AWS::Lambda::Permission
+      Properties:
+        FunctionName: !Ref SendUploadNotificationsLambdaFunction
+        #s3만 이 함수를 호출할 수 있음
+        Principal: s3.amazonaws.com
+        Action: lambda:InvokeFunction
+        #s3 버켓의 소유자 계정Id
+        SourceAccount: !Ref AWS::AccountId
+        #s3 버켓중에서도 이 버켓만 이 함수를 호출할 수 있음
+        SourceArn: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}
 
     # 모든 사용자가 이 버켓에서 이미지를 읽을 수 있도록 정책 추가
     BucketPolicy:
