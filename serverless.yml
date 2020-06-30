@@ -22,6 +22,8 @@ provider:
     IMAGE_ID_INDEX: ImageIdIndex
     IMAGES_S3_BUCKET: serverless-udagram-${self:provider.stage}
     SIGNED_URL_EXPIRATION: 300
+    # 웹소켓 커넥션 ID를 저장하기 위한 DB 테이블
+    CONNECTIONS_TABLE: Connections-${self:provider.stage}
 
   # 사용자가 명령어를 실행할 때 전달한 stage 라는 옵션이 있다면
   # 이를 사용하고 없다면 dev 를 사용한다.
@@ -54,6 +56,14 @@ provider:
         - s3:PutObject
         - s3:GetObject
       Resource: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*
+
+    # 커넥션 테이블에 연결되는 웹소켓 스캔, 추가, 삭제 Iam 권한 추가
+    - Effect: Allow
+      Action:
+        - dynamodb:Scan
+        - dynamodb:PutItem
+        - dynamodb:DeleteItem
+      Resource: arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}
 
 functions:
   GetGroups:
@@ -114,6 +124,18 @@ functions:
   SendUploadNotifications:
     handler: src/lambda/s3/sendNotifications.handler
 
+  ConnectionHandler:
+    handler: src/lambda/websocket/connect.handler
+    events:
+      - websocket:
+          route: $connect
+
+  DisconnectHandler:
+    handler: src/lambda/websocket/disconnect.handler
+    events:
+      - websocket:
+          route: $disconnect
+
 resources:
   Resources:
     # API 게이트웨이에서 요청 검증을 하기 위한 요청 body 검증 리소스 추가
@@ -126,6 +148,18 @@ resources:
         #요청 body만 검증하고 파라미터는 검증하지 않는다.
         ValidateRequestBody: true
         ValidateRequestParameters: false
+
+    WSConnectionDynamoDBTable:
+      Type: 'AWS::DynamoDB::Table'
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
+        TableName: ${self:provider.environment.CONNECTIONS_TABLE}
 
     GroupsDynamoDBTable:
       Type: 'AWS::DynamoDB::Table'
