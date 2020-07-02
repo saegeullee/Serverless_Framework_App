@@ -6,6 +6,18 @@ custom:
     webpackConfig: ./webpack.config.js
     includeModules: true
 
+  # 환경변수에 이 값을 추가해도 되지만 여기서는 custom 섹션에 토픽이름을 추가했다.
+  # 람다 함수에게 이 값을 전달해도 되지 않기 때문이다.
+  # 이 파일의 다른 부분에서 이 섹션의 값들을 사용할 수 있다.
+  topicName: imagesTopic-${self:provider.stage}
+  documentation:
+    api:
+      info:
+        version: v1.0.0
+        title: Udagram API
+        description: Serverless application for images sharing
+    models:
+
 # Add the serverless-webpack plugin
 plugins:
   - serverless-webpack
@@ -129,6 +141,18 @@ functions:
       API_ID:
         Ref: WebsocketsApi
     handler: src/lambda/s3/sendNotifications.handler
+    # 기존에 s3 버켓으로부터 이벤트를 받아서 핸들러를 호출했었다면
+    # 아래의 이벤트 정의를 통해 SNS의 해당 토픽에서 발생한 이벤트로 이 핸들러를 호출한다.
+    events:
+      - sns:
+          arn:
+            Fn::Join:
+              - ':'
+              - - arn:aws:sns
+                - Ref: AWS::Region
+                - Ref: AWS::AccountId
+                - ${self:custom.topicName}
+          topicName: ${self:custom.topicName}
 
   ConnectionHandler:
     handler: src/lambda/websocket/connect.handler
@@ -222,16 +246,23 @@ resources:
     # cors 헤더를 알맞게 추가할 수 있도록 관련 설정들 추가
     AttachmentsBucket:
       Type: AWS::S3::Bucket
+      DependsOn: SNSTopicPolicy
       Properties:
         BucketName: ${self:provider.environment.IMAGES_S3_BUCKET}
-        # S3 버켓으로 부터 발생한 이벤트를 람다함수와 연결하기 위한 설정
+
+        # S3 버켓으로부터 발생한 이벤트를 람다함수에 보내는 것이 아니라
+        # 아래에 정의한 imagesTopic에 이벤트를 보낸다.
         NotificationConfiguration:
-          LambdaConfigurations:
-            - Event: s3:ObjectCreated:*
-              #이벤트 발생시 호출할 람다함수
-              #CloudFormation의 GetAttribute 함수를 사용하여
-              #SendUploadNotificationsLambdaFunction 함수로부터 Arn을 얻어온다. ?
-              Function: !GetAtt SendUploadNotificationsLambdaFunction.Arn
+          TopicConfigurations:
+            - Event: s3:ObjectCreated:Put
+              Topic: !Ref ImagesTopic
+          # S3 버켓으로 부터 발생한 이벤트를 람다함수와 연결하기 위한 설정
+          #LambdaConfigurations:
+          #- Event: s3:ObjectCreated:*
+          #이벤트 발생시 호출할 람다함수
+          #CloudFormation의 GetAttribute 함수를 사용하여
+          #SendUploadNotificationsLambdaFunction 함수로부터 Arn을 얻어온다. ?
+          #Function: !GetAtt SendUploadNotificationsLambdaFunction.Arn
         CorsConfiguration:
           CorsRules:
             - AllowedOrigins:
@@ -274,6 +305,31 @@ resources:
               Resource: 'arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}/*'
         # 어떤 S3 버켓에 이 정책을 추가할지 지정
         Bucket: !Ref AttachmentsBucket
+
+    #S3 버켓이 이 토픽에게 이벤트를 보낼 수 있도록 정책 설정
+    SNSTopicPolicy:
+      Type: AWS::SNS::TopicPolicy
+      Properties:
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: Allow
+              Principal:
+                AWS: '*'
+              Action: sns:Publish
+              Resource: !Ref ImagesTopic
+              #S3 버켓만 이벤트를 보낼수 있도록 설정
+              Condition:
+                ArnLike:
+                  AWS:SourceArn: arn:aws:s3:::${self:provider.environment.IMAGES_S3_BUCKET}
+        Topics:
+          - !Ref ImagesTopic
+
+    ImagesTopic:
+      Type: AWS::SNS::Topic
+      Properties:
+        DisplayName: Image bucket topic
+        TopicName: ${self:custom.topicName}
 
     ImagesSearch:
       Type: AWS::Elasticsearch::Domain
