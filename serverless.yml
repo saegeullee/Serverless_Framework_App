@@ -37,6 +37,7 @@ provider:
     SIGNED_URL_EXPIRATION: 300
     # 웹소켓 커넥션 ID를 저장하기 위한 DB 테이블
     CONNECTIONS_TABLE: Connections-${self:provider.stage}
+    AUTH_0_SECRET: 3hmDflLF1bY48JBTgzSca1VzDx0GM_6YbZI-84KSDXWKoEVAecX85u7mGVEyayxg
 
   # 사용자가 명령어를 실행할 때 전달한 stage 라는 옵션이 있다면
   # 이를 사용하고 없다면 dev 를 사용한다.
