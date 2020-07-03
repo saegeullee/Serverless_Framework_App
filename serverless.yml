@@ -84,6 +84,8 @@ provider:
       Resource: arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}
 
 functions:
+  Auth:
+    handler: src/lambda/auth/authOAuthorizer.handler
   GetGroups:
     handler: src/lambda/http/getGroups.handler
     #connect function to event source
@@ -100,6 +102,7 @@ functions:
           method: post
           path: groups
           cors: true
+          authorizer: Auth
           reqValidatorName: RequestBodyValidator
           request:
             schema:
@@ -131,6 +134,7 @@ functions:
           method: post
           path: groups/{groupId}/images
           cors: true
+          authorizer: Auth
           reqValidatorName: RequestBodyValidator
           request:
             schema:
@@ -196,6 +200,18 @@ functions:
 
 resources:
   Resources:
+    # 커스텀 authorizer 가 인증 실패시 알맞는 Cors 헤더를 셋팅하여 응답으로 보내줌
+    GatewayResponseDefault4XX:
+      Type: 'AWS::ApiGateway::GatewayResponse'
+      Properties:
+        ResponseParameters:
+          gatewayresponse.header.Access-Control-Allow-Origin: "'*'"
+          gatewayresponse.header.Access-Control-Allow-Header: "'Content-Type, X-Amz-Date, Authorization'"
+          gatewayresponse.header.Access-Control-Allow-Methods: "'GET,OPTIONS,POST'"
+        ResponseType: DEFAULT_4XX
+        RestApiId:
+          Ref: 'ApiGatewayRestApi'
+
     # API 게이트웨이에서 요청 검증을 하기 위한 요청 body 검증 리소스 추가
     RequestBodyValidator:
       Type: AWS::ApiGateway::RequestValidator
