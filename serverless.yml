@@ -37,7 +37,9 @@ provider:
     SIGNED_URL_EXPIRATION: 300
     # 웹소켓 커넥션 ID를 저장하기 위한 DB 테이블
     CONNECTIONS_TABLE: Connections-${self:provider.stage}
-    AUTH_0_SECRET: 3hmDflLF1bY48JBTgzSca1VzDx0GM_6YbZI-84KSDXWKoEVAecX85u7mGVEyayxg
+    #AUTH_0_SECRET: 3hmDflLF1bY48JBTgzSca1VzDx0GM_6YbZI-84KSDXWKoEVAecX85u7mGVEyayxg
+    AUTH_0_SECRET_ID: Auth0Secret-${self:provider.stage}
+    AUTH_0_SECRET_FIELD: auth0Secret
 
   # 사용자가 명령어를 실행할 때 전달한 stage 라는 옵션이 있다면
   # 이를 사용하고 없다면 dev 를 사용한다.
@@ -83,6 +85,15 @@ provider:
         - dynamodb:PutItem
         - dynamodb:DeleteItem
       Resource: arn:aws:dynamodb:${opt:region, self:provider.region}:*:table/${self:provider.environment.CONNECTIONS_TABLE}
+
+    - Effect: Allow
+      Action:
+        - secretsmanager:GetSecretValue
+      Resource: !Ref Auth0Secret
+    - Effect: Allow
+      Action:
+        - kms:Decrypt
+      Resource: !GetAtt KMSKey.Arn
 
 functions:
   Auth:
@@ -412,3 +423,37 @@ resources:
                 AWS: '*'
               Action: 'es:*'
               Resource: '*'
+
+    KMSKey:
+      Type: AWS::KMS::Key
+      Properties:
+        Description: KMS key to encrypt Auth0 secret
+        KeyPolicy:
+          Version: '2012-10-17'
+          Id: key-default-1
+          Statement:
+            - Sid: Allow administration of the key
+              Effect: Allow
+              Principal:
+                AWS:
+                  Fn::Join:
+                    - ':'
+                    - - 'arn:aws:iam:'
+                      - Ref: AWS::AccountId
+                      - 'root'
+              Action:
+                - 'kms:*'
+              Resource: '*'
+
+    KMSKeyAlias:
+      Type: AWS::KMS::Alias
+      Properties:
+        AliasName: alias/auth0Key-${self:provider.stage}
+        TargetKeyId: !Ref KMSKey
+
+    Auth0Secret:
+      Type: AWS::SecretsManager::Secret
+      Properties:
+        Name: ${self:provider.environment.AUTH_0_SECRET_ID}
+        Description: Auth0 secret
+        KmsKeyId: !Ref KMSKey
